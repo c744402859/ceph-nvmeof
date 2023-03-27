@@ -11,7 +11,7 @@ import grpc
 import json
 import nvme_gw_pb2_grpc as pb2_grpc
 import nvme_gw_pb2 as pb2
-import nvme_gw_config
+import config
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -462,6 +462,6 @@ def delete_listener(nqn: str, listener: Listener):
     return listener
 
 client = GatewayClient()
-nvme_config = nvme_gw_config.NVMeGWConfig("nvme_gw.config") # TODO: fix hardcoded config name/path
+nvme_config = config.GatewayConfig("nvme_gw.config") # TODO: fix hardcoded config name/path
 logger = nvme_config.logger
 client.connect(nvme_config)
