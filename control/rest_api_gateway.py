@@ -2,10 +2,15 @@
 
 import logging
 import logging.handlers
+import grpc
 from logging.handlers import RotatingFileHandler
 from flask import Flask, Response, jsonify
 from pydantic import BaseModel
 from typing import Optional
+
+from .generated import gateway_pb2_grpc as pb2_grpc
+from .generated import gateway_pb2 as pb2
+from .config import GatewayConfig
 
 #define message structure
 class GatewayClient:
@@ -36,8 +41,34 @@ class GatewayClient:
             raise AttributeError("logger is None. Set with connect method.")
         return self._logger
 
-    def connect(self, nvme_config):
+    def connect(self, config):
         """ Connects to server and sets stub and logger."""
+         # Read in configuration parameters
+        host = config.get("gateway", "addr")
+        port = config.get("gateway", "port")
+        enable_auth = config.getboolean("gateway", "enable_auth")
+        server = "{}:{}".format(host, port)
+
+        if enable_auth:
+            # Create credentials for mutual TLS and a secure channel
+            with open(config.get("mtls", "client_cert"), "rb") as f:
+                client_cert = f.read()
+            with open(config.get("mtls", "client_key"), "rb") as f:
+                client_key = f.read()
+            with open(config.get("mtls", "server_cert"), "rb") as f:
+                server_cert = f.read()
+
+            credentials = grpc.ssl_channel_credentials(
+                root_certificates=server_cert,
+                private_key=client_key,
+                certificate_chain=client_cert,
+            )
+            channel = grpc.secure_channel(server, credentials)
+        else:
+            # Instantiate a channel without credentials
+            channel = grpc.insecure_channel(server)
+        # Bind the client and the server
+        self._stub = pb2_grpc.GatewayStub(channel)
 
 
 class Bdev(BaseModel):
