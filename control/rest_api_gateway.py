@@ -3,6 +3,7 @@
 import logging
 import logging.handlers
 import grpc
+import argparse
 from logging.handlers import RotatingFileHandler
 from flask import Flask, Response, jsonify
 from pydantic import BaseModel
@@ -11,6 +12,55 @@ from typing import Optional
 from .generated import gateway_pb2_grpc as pb2_grpc
 from .generated import gateway_pb2 as pb2
 from .config import GatewayConfig
+
+
+def argument(*name_or_flags, **kwargs):
+    """Helper function to format arguments for argparse command decorator."""
+
+    return (list(name_or_flags), kwargs)
+
+
+class Parser:
+    """Class to simplify creation of client CLI.
+
+    Instance attributes:
+        parser: ArgumentParser object.
+        subparsers: Action object to add subcommands to main argument parser.
+    """
+
+    def __init__(self):
+        self.parser = argparse.ArgumentParser(
+            prog="python3 -m control.rest_api_gateway",
+            description="RestAPI to manage NVMe gateways")
+        self.parser.add_argument(
+            "-c",
+            "--config",
+            default="ceph-nvmeof.conf",
+            type=str,
+            help="Path to config file",
+        )
+
+        self.subparsers = self.parser.add_subparsers(dest="subcommand")
+
+    def cmd(self, args=[]):
+        """Decorator to create an argparse command.
+
+        The arguments to this decorator are used as arguments for the argparse
+        command.
+        """
+
+        def decorator(func):
+            parser = self.subparsers.add_parser(func.__name__,
+                                                description=func.__doc__)
+            # Add specified arguments to the parser and set the function
+            # attribute to point to the subcommand's associated function
+            for arg in args:
+                parser.add_argument(*arg[0], **arg[1])
+            parser.set_defaults(func=func)
+            return func
+
+        return decorator
+
 
 #define message structure
 class GatewayClient:
@@ -21,6 +71,7 @@ class GatewayClient:
 
     """
 
+    cli = Parser()
     def __init__(self):
         self._stub = None
         self._logger = None
@@ -397,5 +448,20 @@ def delete_listener(nqn: str, listener: Listener):
 
     return listener
 
-if __name__ == '__main__':
+
+def main(args=None):
+    client = GatewayClient()
+    parsed_args = client.cli.parser.parse_args(args)
+    config = GatewayConfig(parsed_args.config)
+    client.connect(config)
+    if parsed_args.subcommand is None:
+        client.cli.parser.print_help()
+    else:
+        call_function = getattr(client, parsed_args.func.__name__)
+        call_function(parsed_args)
+    
     app.run(port=5599)
+
+
+if __name__ == '__main__':
+    main()
